@@ -83,7 +83,7 @@ func (p *ProxySQL) Core() {
 	go factory.Start(stopper)
 
 	if !cache.WaitForCacheSync(stopper, podInformer.HasSynced) {
-		runtime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
+		runtime.HandleError(fmt.Errorf("timeout waiting for caches to sync"))
 		return
 	}
 
@@ -206,7 +206,7 @@ func (p *ProxySQL) addPodToCluster(pod *v1.Pod) error {
 		if err != nil {
 			// FIXME: wrap error with extra info and return
 			slog.Error("Command failed", slog.String("command", command), slog.Any("error", err))
-			return err
+			return fmt.Errorf("failed to execute command: %w", err)
 		}
 	}
 
@@ -240,7 +240,7 @@ func (p *ProxySQL) removePodFromCluster(pod *v1.Pod) error {
 		_, err := p.conn.Exec(command)
 		if err != nil {
 			slog.Error("Command failed", slog.Any("command", command), slog.Any("error", err))
-			return err
+			return fmt.Errorf("failed to execute command %s: %w", command, err)
 		}
 	}
 

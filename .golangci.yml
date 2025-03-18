@@ -1,7 +1,6 @@
 # Visit https://golangci-lint.run/ for usage documentation
 # and information on other useful linters
 issues:
-  max-per-linter: 0
   max-same-issues: 0
 
 linters:
@@ -15,7 +14,7 @@ linters:
     - errname
     - errorlint
     - forcetypeassert
-    # - forbidigo
+    - forbidigo
     - decorder
     - gocritic
     - godot
@@ -25,7 +24,7 @@ linters:
     - gofmt
     - gofumpt
     - goimports
-    # - gomnd
+    # - mnd
     - gosimple
     - govet
     - ineffassign
@@ -38,13 +37,11 @@ linters:
     - staticcheck
     - reassign
     - revive
-    - tenv
     - unconvert
     - unparam
     - sloglint
     - unused
-    # - testifylint
-    # - wrapcheck
+    - wrapcheck
     - wsl
     - whitespace
 

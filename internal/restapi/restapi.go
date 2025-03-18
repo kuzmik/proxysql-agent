@@ -38,7 +38,7 @@ func livenessHandler(psql *proxysql.ProxySQL) http.HandlerFunc {
 
 		resultJSON, err := json.Marshal(results)
 		if err != nil {
-			fmt.Println("Error marshalling JSON:", err)
+			slog.Error("error marshalling JSON", slog.Any("err", err))
 			return
 		}
 
@@ -231,7 +231,7 @@ func killCSP() error {
 	// Make an HTTP request to localhost:9091/quitquitquit
 	resp, err := http.Get("http://localhost:9091/quitquitquit")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to make HTTP GET request to localhost:9091/quitquitquit: %w", err)
 	}
 	defer resp.Body.Close()
 

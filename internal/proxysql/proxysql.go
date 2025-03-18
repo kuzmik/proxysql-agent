@@ -30,12 +30,12 @@ func (p *ProxySQL) New(configs *configuration.Config) (*ProxySQL, error) {
 
 	conn, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}
 
 	err = conn.Ping()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	slog.Info("Connected to ProxySQL admin", slog.String("Host", address))
@@ -48,7 +48,12 @@ func (p *ProxySQL) Conn() *sql.DB {
 }
 
 func (p *ProxySQL) Ping() error {
-	return p.conn.Ping()
+	err := p.conn.Ping()
+	if err != nil {
+		return fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	return nil
 }
 
 func (p *ProxySQL) GetBackends() (map[string]int, error) {
@@ -56,7 +61,7 @@ func (p *ProxySQL) GetBackends() (map[string]int, error) {
 
 	rows, err := p.conn.Query("SELECT hostgroup_id, hostname, port FROM runtime_mysql_servers ORDER BY hostgroup_id")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
 	defer rows.Close()
@@ -68,13 +73,13 @@ func (p *ProxySQL) GetBackends() (map[string]int, error) {
 
 		err := rows.Scan(&hostgroup, &hostname, &port)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
 		entries[hostname] = hostgroup
 
 		if rows.Err() != nil && errors.Is(err, sql.ErrNoRows) {
-			return nil, rows.Err()
+			return nil, fmt.Errorf("failed to scan row: %w", rows.Err())
 		}
 	}
 
@@ -142,12 +147,12 @@ func (p *ProxySQL) probeBackends() (int /* backends total */, int /* backends on
 
 	err := p.conn.QueryRow("SELECT COUNT(*) FROM runtime_mysql_servers").Scan(&total)
 	if err != nil {
-		return -1, -1, err
+		return -1, -1, fmt.Errorf("failed to execute query: %w", err)
 	}
 
 	err = p.conn.QueryRow("SELECT COUNT(*) FROM runtime_mysql_servers WHERE status = 'ONLINE'").Scan(&online)
 	if err != nil {
-		return -1, -1, err
+		return -1, -1, fmt.Errorf("failed to execute query: %w", err)
 	}
 
 	return online, total, nil
@@ -163,7 +168,7 @@ func (p *ProxySQL) ProbeClients() (int /* clients connected */, error) {
 
 	err := p.conn.QueryRow(query).Scan(&online)
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("failed to execute query: %w", err)
 	}
 
 	if online.Valid {

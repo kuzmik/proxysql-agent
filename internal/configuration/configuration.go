@@ -88,7 +88,7 @@ func Configure() (*Config, error) {
 	if err := viper.ReadInConfig(); err != nil {
 		errVal := viper.ConfigFileNotFoundError{}
 		if ok := errors.As(err, &errVal); !ok {
-			return nil, err
+			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
 	}
 
@@ -112,22 +112,11 @@ func Configure() (*Config, error) {
 
 	pflag.Bool("show-config", false, "Dump the configuration for debugging")
 
-	err := pflag.CommandLine.MarkHidden("show-config")
-	if err != nil {
-		return nil, err
-	}
-
 	pflag.Parse()
 
-	err = viper.BindPFlags(pflag.CommandLine)
+	err := viper.BindPFlags(pflag.CommandLine)
 	if err != nil {
-		return nil, err
-	}
-
-	// we are only dumping the config if the secret flag show-config is specified, because the config
-	// contains the proxysql admin password
-	if viper.GetViper().GetBool("show-config") {
-		fmt.Println("settings", viper.GetViper().AllSettings())
+		return nil, fmt.Errorf("failed to bind flags: %w", err)
 	}
 
 	// run some validations before proceeding
@@ -154,7 +143,7 @@ func Configure() (*Config, error) {
 
 	err = viper.Unmarshal(settings)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
 	return settings, nil

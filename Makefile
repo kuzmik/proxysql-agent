@@ -18,9 +18,10 @@ clean:
 	@rm -rf $(TARGET) *.test *.out tmp/* coverage dist
 
 lint:
-	@gofmt -s -l -w .
 	@go vet ./...
-	@golangci-lint run --config=.golangci.yml --allow-parallel-runners
+	@go tool gofumpt -l -w .
+	@go tool staticcheck ./...
+	@go tool golangci-lint run --config=.golangci.yml --allow-parallel-runners
 
 test:
 	@mkdir -p coverage

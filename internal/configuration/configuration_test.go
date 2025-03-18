@@ -1,17 +1,15 @@
 package configuration
 
 import (
-	"fmt"
 	"os"
 	"testing"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"github.com/stretchr/testify/assert"
 )
 
-//nolint:gochecknoglobals
-var testConfigFile = []byte(`
+// sample config file used in a couple of test functions.
+const testConfigYAML = `---
 start_delay: 30
 log:
   level: "TRACE"
@@ -28,8 +26,7 @@ core:
     app: test-application
     component: test-component
 satellite:
-  interval: 60
-`)
+  interval: 60`
 
 func TestValidations(t *testing.T) {
 	os.Args = []string{"cmd"}
@@ -39,13 +36,13 @@ func TestValidations(t *testing.T) {
 	viper.Reset()
 
 	_, err := Configure()
-
-	assert.NoError(t, err, "Configuration should not return an error")
+	if err != nil {
+		t.Fatalf("Configuration returned unexpected error: %v", err)
+	}
 
 	t.Run("validate run_mode", func(t *testing.T) {
 		defer func() {
 			if r := recover(); r != nil {
-				// You can log or handle the panic here without printing to console
 				t.Logf("Recovered from panic: %v", r)
 			}
 		}()
@@ -56,8 +53,13 @@ func TestValidations(t *testing.T) {
 		pflag.CommandLine = pflag.NewFlagSet("cmd", pflag.ContinueOnError)
 
 		_, err := Configure()
-		fmt.Println(err)
-		assert.EqualError(t, err, "run_mode must be either 'core' or 'satellite'")
+		if err == nil {
+			t.Error("expected error for invalid run_mode, got nil")
+		}
+
+		if err.Error() != "run_mode must be either 'core' or 'satellite'" {
+			t.Errorf("expected error 'run_mode must be either 'core' or 'satellite'', got %v", err)
+		}
 	})
 
 	t.Run("validate start_delay", func(t *testing.T) {
@@ -67,8 +69,13 @@ func TestValidations(t *testing.T) {
 		pflag.CommandLine = pflag.NewFlagSet("cmd", pflag.ContinueOnError)
 
 		_, err := Configure()
-		fmt.Println(err)
-		assert.EqualError(t, err, "start_delay cannot be < 0")
+		if err == nil {
+			t.Error("expected error for negative start_delay, got nil")
+		}
+
+		if err.Error() != "start_delay cannot be < 0" {
+			t.Errorf("expected error 'start_delay cannot be < 0', got %v", err)
+		}
 	})
 
 	t.Run("validate core.interval", func(t *testing.T) {
@@ -78,8 +85,13 @@ func TestValidations(t *testing.T) {
 		pflag.CommandLine = pflag.NewFlagSet("cmd", pflag.ContinueOnError)
 
 		_, err := Configure()
-		fmt.Println(err)
-		assert.EqualError(t, err, "core.interval cannot be < 0")
+		if err == nil {
+			t.Error("expected error for negative core.interval, got nil")
+		}
+
+		if err.Error() != "core.interval cannot be < 0" {
+			t.Errorf("expected error 'core.interval cannot be < 0', got %v", err)
+		}
 	})
 
 	t.Run("validate satellite.interval", func(t *testing.T) {
@@ -89,8 +101,13 @@ func TestValidations(t *testing.T) {
 		pflag.CommandLine = pflag.NewFlagSet("cmd", pflag.ContinueOnError)
 
 		_, err := Configure()
-		fmt.Println(err)
-		assert.EqualError(t, err, "satellite.interval cannot be < 0")
+		if err == nil {
+			t.Error("expected error for negative satellite.interval, got nil")
+		}
+
+		if err.Error() != "satellite.interval cannot be < 0" {
+			t.Errorf("expected error 'satellite.interval cannot be < 0', got %v", err)
+		}
 	})
 }
 
@@ -101,61 +118,86 @@ func TestDefaults(t *testing.T) {
 	viper.Reset()
 
 	defaultsConfig, err := Configure()
+	if err != nil {
+		t.Fatalf("Configuration returned unexpected error: %v", err)
+	}
 
-	assert.NoError(t, err, "Configuration should not return an error")
-	assert.Equal(t, 10, defaultsConfig.Satellite.Interval)
+	if got := defaultsConfig.Satellite.Interval; got != 10 {
+		t.Errorf("default Satellite.Interval = %d, want %d", got, 10)
+	}
 }
 
 func TestConfigFile(t *testing.T) {
 	tmpfile, err := os.CreateTemp("", "config_test_*.yaml")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
 
 	t.Cleanup(func() {
 		os.Remove(tmpfile.Name())
 	})
 
-	viper.Reset()
+	if _, err = tmpfile.Write([]byte(testConfigYAML)); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
 
-	_, err = tmpfile.Write(testConfigFile)
-
-	assert.NoError(t, err)
 	tmpfile.Close()
 
-	// Set environment variables need for testing the file
 	t.Setenv("AGENT_CONFIG_FILE", tmpfile.Name())
 
 	os.Args = []string{"cmd"}
 	pflag.CommandLine = pflag.NewFlagSet("cmd", pflag.ContinueOnError)
 
 	fileConfig, err := Configure()
-	assert.NoError(t, err, "Configuration should not return an error")
+	if err != nil {
+		t.Fatalf("Configure() returned unexpected error: %v", err)
+	}
 
-	assert.Equal(t, 30, fileConfig.StartDelay)
-	assert.Equal(t, "TRACE", fileConfig.Log.Level)
-	assert.Equal(t, "core", fileConfig.RunMode)
+	tests := []struct {
+		name   string
+		got    interface{}
+		want   interface{}
+		errMsg string
+	}{
+		{"StartDelay", fileConfig.StartDelay, 30, "StartDelay"},
+		{"Log.Level", fileConfig.Log.Level, "TRACE", "Log.Level"},
+		{"RunMode", fileConfig.RunMode, "core", "RunMode"},
+		{"ProxySQL.Address", fileConfig.ProxySQL.Address, "proxysql.vip:6032", "ProxySQL.Address"},
+		{"ProxySQL.Username", fileConfig.ProxySQL.Username, "agent-user", "ProxySQL.Username"},
+		{"ProxySQL.Password", fileConfig.ProxySQL.Password, "agent-password", "ProxySQL.Password"},
+		{"Core.PodSelector.App", fileConfig.Core.PodSelector.App, "test-application", "Core.PodSelector.App"},
+		{"Core.PodSelector.Component", fileConfig.Core.PodSelector.Component, "test-component", "Core.PodSelector.Component"},
+		{"Satellite.Interval", fileConfig.Satellite.Interval, 60, "Satellite.Interval"},
+	}
 
-	assert.Equal(t, "proxysql.vip:6032", fileConfig.ProxySQL.Address)
-	assert.Equal(t, "agent-user", fileConfig.ProxySQL.Username)
-	assert.Equal(t, "agent-password", fileConfig.ProxySQL.Password)
-
-	assert.Equal(t, "test-application", fileConfig.Core.PodSelector.App)
-	assert.Equal(t, "test-component", fileConfig.Core.PodSelector.Component)
-
-	assert.Equal(t, 60, fileConfig.Satellite.Interval)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("got %v = %v, want %v", tt.errMsg, tt.got, tt.want)
+			}
+		})
+	}
 }
 
 func TestEnvironment(t *testing.T) {
-	t.Setenv("AGENT_START_DELAY", "500")
-	t.Setenv("AGENT_LOG_LEVEL", "env-WARN")
-	t.Setenv("AGENT_LOG_FORMAT", "env-text")
-	t.Setenv("AGENT_RUN_MODE", "satellite")
-	t.Setenv("AGENT_PROXYSQL_ADDRESS", "env-proxysql:6666")
-	t.Setenv("AGENT_PROXYSQL_USERNAME", "env-proxysql-user")
-	t.Setenv("AGENT_PROXYSQL_PASSWORD", "env-proxysql-password")
-	t.Setenv("AGENT_CORE_PODSELECTOR_NAMESPACE", "env-proxysql-blue")
-	t.Setenv("AGENT_CORE_PODSELECTOR_APP", "env-proxysql-blue")
-	t.Setenv("AGENT_CORE_PODSELECTOR_COMPONENT", "env-proxysql-core")
-	t.Setenv("AGENT_SATELLITE_INTERVAL", "60")
+	// Set up all environment variables
+	envVars := map[string]string{
+		"AGENT_START_DELAY":                "500",
+		"AGENT_LOG_LEVEL":                  "env-WARN",
+		"AGENT_LOG_FORMAT":                 "env-text",
+		"AGENT_RUN_MODE":                   "satellite",
+		"AGENT_PROXYSQL_ADDRESS":           "env-proxysql:6666",
+		"AGENT_PROXYSQL_USERNAME":          "env-proxysql-user",
+		"AGENT_PROXYSQL_PASSWORD":          "env-proxysql-password",
+		"AGENT_CORE_PODSELECTOR_NAMESPACE": "env-proxysql-blue",
+		"AGENT_CORE_PODSELECTOR_APP":       "env-proxysql-blue",
+		"AGENT_CORE_PODSELECTOR_COMPONENT": "env-proxysql-core",
+		"AGENT_SATELLITE_INTERVAL":         "60",
+	}
+
+	for k, v := range envVars {
+		t.Setenv(k, v)
+	}
 
 	os.Args = []string{"cmd"}
 	pflag.CommandLine = pflag.NewFlagSet("cmd", pflag.ContinueOnError)
@@ -163,27 +205,39 @@ func TestEnvironment(t *testing.T) {
 	viper.Reset()
 
 	envConfig, err := Configure()
+	if err != nil {
+		t.Fatalf("Configure() returned unexpected error: %v", err)
+	}
 
-	assert.NoError(t, err, "Configuration should not return an error")
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"StartDelay", envConfig.StartDelay, 500},
+		{"Log.Level", envConfig.Log.Level, "env-WARN"},
+		{"Log.Format", envConfig.Log.Format, "env-text"},
+		{"RunMode", envConfig.RunMode, "satellite"},
+		{"ProxySQL.Address", envConfig.ProxySQL.Address, "env-proxysql:6666"},
+		{"ProxySQL.Username", envConfig.ProxySQL.Username, "env-proxysql-user"},
+		{"ProxySQL.Password", envConfig.ProxySQL.Password, "env-proxysql-password"},
+		{"Core.PodSelector.Namespace", envConfig.Core.PodSelector.Namespace, "env-proxysql-blue"},
+		{"Core.PodSelector.App", envConfig.Core.PodSelector.App, "env-proxysql-blue"},
+		{"Core.PodSelector.Component", envConfig.Core.PodSelector.Component, "env-proxysql-core"},
+		{"Satellite.Interval", envConfig.Satellite.Interval, 60},
+	}
 
-	assert.Equal(t, 500, envConfig.StartDelay)
-	assert.Equal(t, "env-WARN", envConfig.Log.Level)
-	assert.Equal(t, "env-text", envConfig.Log.Format)
-	assert.Equal(t, "satellite", envConfig.RunMode)
-
-	assert.Equal(t, "env-proxysql:6666", envConfig.ProxySQL.Address)
-	assert.Equal(t, "env-proxysql-user", envConfig.ProxySQL.Username)
-	assert.Equal(t, "env-proxysql-password", envConfig.ProxySQL.Password)
-
-	assert.Equal(t, "env-proxysql-blue", envConfig.Core.PodSelector.Namespace)
-	assert.Equal(t, "env-proxysql-blue", envConfig.Core.PodSelector.App)
-	assert.Equal(t, "env-proxysql-core", envConfig.Core.PodSelector.Component)
-
-	assert.Equal(t, 60, envConfig.Satellite.Interval)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
 }
 
 func TestFlags(t *testing.T) {
-	os.Args = []string{
+	flags := []string{
 		"cmd",
 		"--start_delay=415",
 		"--log.level=ERROR",
@@ -197,81 +251,99 @@ func TestFlags(t *testing.T) {
 		"--core.podselector.component=notcore",
 		"--satellite.interval=5533",
 	}
+	os.Args = flags
 	pflag.CommandLine = pflag.NewFlagSet("cmd", pflag.ContinueOnError)
 
 	viper.Reset()
 
-	envConfig, err := Configure()
+	flagConfig, err := Configure()
+	if err != nil {
+		t.Fatalf("Configure() returned unexpected error: %v", err)
+	}
 
-	assert.NoError(t, err, "Configuration should not return an error")
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"StartDelay", flagConfig.StartDelay, 415},
+		{"Log.Level", flagConfig.Log.Level, "ERROR"},
+		{"Log.Format", flagConfig.Log.Format, "text"},
+		{"RunMode", flagConfig.RunMode, "core"},
+		{"ProxySQL.Address", flagConfig.ProxySQL.Address, "86.75.30.9:9999"},
+		{"ProxySQL.Username", flagConfig.ProxySQL.Username, "nick"},
+		{"ProxySQL.Password", flagConfig.ProxySQL.Password, "NOWAY"},
+		{"Core.Interval", flagConfig.Core.Interval, 1000},
+		{"Core.PodSelector.App", flagConfig.Core.PodSelector.App, "proxysql-green"},
+		{"Core.PodSelector.Component", flagConfig.Core.PodSelector.Component, "notcore"},
+		{"Satellite.Interval", flagConfig.Satellite.Interval, 5533},
+	}
 
-	assert.Equal(t, 415, envConfig.StartDelay)
-	assert.Equal(t, "ERROR", envConfig.Log.Level)
-	assert.Equal(t, "text", envConfig.Log.Format)
-	assert.Equal(t, "core", envConfig.RunMode)
-
-	assert.Equal(t, "86.75.30.9:9999", envConfig.ProxySQL.Address)
-	assert.Equal(t, "nick", envConfig.ProxySQL.Username)
-	assert.Equal(t, "NOWAY", envConfig.ProxySQL.Password)
-
-	assert.Equal(t, 1000, envConfig.Core.Interval)
-	assert.Equal(t, "proxysql-green", envConfig.Core.PodSelector.App)
-	assert.Equal(t, "notcore", envConfig.Core.PodSelector.Component)
-
-	assert.Equal(t, 5533, envConfig.Satellite.Interval)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
 }
 
 func TestPrecedence(t *testing.T) {
 	tmpfile, err := os.CreateTemp("", "config_test_*.yaml")
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
 
 	t.Cleanup(func() {
 		os.Remove(tmpfile.Name())
 	})
 
-	_, err = tmpfile.Write(testConfigFile)
+	if _, err = tmpfile.Write([]byte(testConfigYAML)); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
 
-	assert.NoError(t, err)
 	tmpfile.Close()
 
-	// set environment variables need for testing the file
 	t.Setenv("AGENT_CONFIG_FILE", tmpfile.Name())
-
-	// not necessary to test config file taking precedence over defaults, the TestConfigfile
-	// already demonstrates that
 
 	t.Run("env overwrites config file", func(t *testing.T) {
 		viper.Reset()
-
 		t.Setenv("AGENT_CORE_PODSELECTOR_COMPONENT", "env-test")
 
 		os.Args = []string{"cmd"}
 		pflag.CommandLine = pflag.NewFlagSet("cmd", pflag.ContinueOnError)
 
-		var configs *Config
-		configs, err = Configure()
-		assert.NoError(t, err, "Configuration should not return an error")
+		configs, err := Configure()
+		if err != nil {
+			t.Fatalf("Configure() returned unexpected error: %v", err)
+		}
 
-		// set in the config
-		assert.Equal(t, 30, configs.StartDelay)
+		// Check value from config file remains unchanged
+		if got := configs.StartDelay; got != 30 {
+			t.Errorf("StartDelay = %v, want %v (from config file)", got, 30)
+		}
 
-		// set via the ENV variable
-		assert.Equal(t, "env-test", configs.Core.PodSelector.Component)
+		// Check value overwritten by environment variable
+		if got := configs.Core.PodSelector.Component; got != "env-test" {
+			t.Errorf("Core.PodSelector.Component = %v, want %v (from env)", got, "env-test")
+		}
 	})
 
 	t.Run("flag overwrites config file and env", func(t *testing.T) {
 		viper.Reset()
-
 		t.Setenv("AGENT_CORE_PODSELECTOR_COMPONENT", "env-test")
 
 		os.Args = []string{"cmd", "--core.podselector.component=flagtest"}
 		pflag.CommandLine = pflag.NewFlagSet("cmd", pflag.ContinueOnError)
 
-		var configs *Config
-		configs, err = Configure()
-		assert.NoError(t, err, "Configuration should not return an error")
+		configs, err := Configure()
+		if err != nil {
+			t.Fatalf("Configure() returned unexpected error: %v", err)
+		}
 
-		// set via the commandline flag
-		assert.Equal(t, "flagtest", configs.Core.PodSelector.Component)
+		// Check value overwritten by flag takes precedence over both config file and env
+		if got := configs.Core.PodSelector.Component; got != "flagtest" {
+			t.Errorf("Core.PodSelector.Component = %v, want %v (from flag)", got, "flagtest")
+		}
 	})
 }
